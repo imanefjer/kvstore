@@ -1,6 +1,6 @@
 !!!!! Read levelDB
 
-
+if i don't have goroutine i should delete mu mutex
 LSM tree // b+ tree LSM hssn
 ////
 A sequentially-written file refers to a file where data is written sequentially or in a continuous manner without random access. In the context of a key-value store or database system, this often relates to the order in which data is appended to the file.
