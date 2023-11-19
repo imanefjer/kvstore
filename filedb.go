@@ -17,6 +17,7 @@ func (fl *fileDB) begin() error {
 	_, err := fl.file.Seek(0, io.SeekStart)
 	return err
 }
+ 
 
 func (fl *fileDB) findFirst(buf []byte, term byte) int {
 	for i, v := range buf {

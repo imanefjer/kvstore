@@ -74,6 +74,7 @@ func (n *Node) findMax(parent *Node) (*Node, *Node) {
 	return n.Right.findMax(n)
 
 }
+  
 
 func (n *Node) replaceNode(parent, newValue *Node) error {
 	if n == nil {
