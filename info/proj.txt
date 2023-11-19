@@ -3,20 +3,27 @@
 if i don't have goroutine i should delete mu mutex
 LSM tree // b+ tree LSM hssn
 ////
-A sequentially-written file refers to a file where data is written sequentially or in a continuous manner without random access. In the context of a key-value store or database system, this often relates to the order in which data is appended to the file.
+A sequentially-written file refers to a file where data is written sequentially or in a continuous manner without random access.
+ In the context of a key-value store or database system, this often relates to the order in which data is appended to the file.
 
 When dealing with sequential writes:
 
-Appending Data: New data is added to the file by appending it at the end. This is a common practice for write-ahead logs (WAL) or logs in databases.
+Appending Data: New data is added to the file by appending it at the end. This is a common practice for write-ahead logs (WAL) 
+or logs in databases.
 
-No Random Access: Unlike a random access file where you can seek to any position to read or write data, in a sequentially-written file, you typically read and write data in a linear fashion, from the beginning to the end.
+No Random Access: Unlike a random access file where you can seek to any position to read or write data, in a 
+sequentially-written file, you typically read and write data in a linear fashion, from the beginning to the end.
 
-Write-Once: Once data is written, it is not typically modified in place. If modifications are needed, a new version or entry is appended to the file.
+Write-Once: Once data is written, it is not typically modified in place. If modifications are needed, a new version or entry is 
+appended to the file.
 
-Sequentially-written files are often used for operations like logging, where the order of events is crucial, or for write-ahead logs in databases, where maintaining the order of write operations is essential for durability and consistency.*
+Sequentially-written files are often used for operations like logging, where the order of events is crucial, or for write-ahead 
+logs in databases, where maintaining the order of write operations is essential for durability and consistency.*
 ////
 ///
-WAL can be configured to be stored in a directory different from the directory where the SST files are stored. This is necessary for those cases in which you might want to store all data files in non-persistent fast storage. At the same time, you can ensure no data loss by putting all transaction logs on slower but persistent storage.
+WAL can be configured to be stored in a directory different from the directory where the SST files are stored. This is necessary
+ for those cases in which you might want to store all data files in non-persistent fast storage. At the same time, you can 
+ ensure no data loss by putting all transaction logs on slower but persistent storage.
 ///
 Memtables in memeory after flash they will be  SStables 
 WAL (log) (clean the WAL )
@@ -27,7 +34,8 @@ level DB LSMtrees
 Compactions
 
 - compaction is the process of merging multiple sstables into one or more new sstable(s).
-- compactions are triggered by space amplification, i.e., when an sstable grows beyond its configured size limit, it triggers a compaction
+- compactions are triggered by space amplification, i.e., when an sstable grows beyond its configured size limit, it triggers 
+a compaction
 **copilot generate this:
 //Compactions
 //Read/Write Amplification
@@ -49,7 +57,8 @@ while flashing the desk atomic (file rename in a temporary dir )
 testing 
 documentation
 ga
-SStable (metadata: length of key, value, magic number o cafebyte, offset dlmin key, dlmax key, num of tuples , timestamp, version, hash (,uc21E) ) binary files
+SStable (metadata: length of key, value, magic number o cafebyte, offset dlmin key, dlmax key, num of tuples , timestamp, 
+version, hash (,uc21E) ) binary files
 we can not use timestamp if the name of the 
 var length encoding 
 lkeys ou lvalues strings
