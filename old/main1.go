@@ -40,6 +40,7 @@ type memDB struct {
 	values map[string][]byte
 }
 
+
 func (mem *memDB) Set(key, value []byte) error {
 	mem.values[string(key)] = value
 	return nil

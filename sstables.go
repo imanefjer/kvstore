@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 )
-
+var(
+	//ErrKeynotfound is returned when the lod is corrupt
+	ErrKeynotfound = errors.New("key not found")
+)
 type SStable struct {
 	file        io.ReadWriteSeeker
 	magicNumber [4]byte
@@ -63,3 +67,9 @@ func (s *SStables) load() error{
 	}
 	return nil
 }
+
+func (s *SStables)Get(key []byte)([]byte , error)
+
+func (s *SStables)Flush(tree Tree)(error)
+
+func (s *SStable)Name()(string , error)

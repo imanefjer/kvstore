@@ -8,19 +8,6 @@ import (
 
 type Cmd int
 
-// // func Gets(key []byte) {
-// // 	value := tree.get(key)
-// // 	fmt.Println("Gets key: ", string(value))
-// // }
-// func Sets(key, value []byte) {
-// 	fmt.Println("Sets key: ", string(key), " value = ", string(value))
-
-// }
-// func Dels(key []byte) {
-// 	fmt.Println("dels key: ", string(key))
-
-// }
-
 func main() {
 	f, err := os.OpenFile("wal.log", os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
@@ -34,6 +21,12 @@ func main() {
 		fmt.Println(err)
 	}
 	tree := Tree{}
+	//In case the program exits and some elements in the tree were not flushed to disk
+	err = Recover(wal, &tree)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		GetHandler(w, r, &tree, wal)
 

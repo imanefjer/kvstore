@@ -16,6 +16,7 @@ type Entry struct {
 }
 
 var (
+	
 	//ErrCorrupt is returned when the lod is corrupt
 	ErrCorrupt = errors.New("wal corrupt")
 	// ErrClosed is returned when an operation cannot be completed because
