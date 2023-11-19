@@ -6,8 +6,8 @@ import (
 )
 
 type Node struct {
-	Key []byte
-	Value  []byte
+	Key   []byte
+	Value []byte
 	Left  *Node
 	Right *Node
 }
@@ -58,7 +58,45 @@ func (n *Node) Get(key []byte) ([]byte, bool) {
 		return n.Right.Get(key)
 	}
 }
-
+//the max key in the tree
+func (t Tree) Max() []byte {
+	if t.Root == nil {
+		return nil
+	}
+	return t.Root.max()
+}
+func (n *Node) max() []byte {
+	if n.Right == nil {
+		return n.Key
+	}
+	return n.Right.max()
+}
+//the min key in the tree
+func (t *Tree) Min() []byte {
+	if t.Root == nil {
+		return nil
+	}
+	return t.Root.min()
+}
+func (n *Node) min() []byte {
+	if n.Left == nil {
+		return n.Key
+	}
+	return n.Left.min()
+}
+//Len of the tree
+func (t Tree)Len() int{
+	if t.Root==nil{
+		return 0
+	}
+	return t.Root.len()
+}
+func (n *Node)len()int{
+	if n==nil{
+		return 0
+	}
+	return 1+n.Left.len()+n.Right.len()
+}
 //  deleting in a binary search tree is quiet complicated in the case when we want to delete an inner node:
 // if its a right child of  its parent then we search for the largest value in its left subtreee  we replace the node's value
 // with this value (largest value== Lvalue) if it's  (largest value) then we call delete on this node Lvalue. If it is the left
@@ -74,7 +112,6 @@ func (n *Node) findMax(parent *Node) (*Node, *Node) {
 	return n.Right.findMax(n)
 
 }
-  
 
 func (n *Node) replaceNode(parent, newValue *Node) error {
 	if n == nil {
@@ -125,7 +162,8 @@ func (t *Tree) Set(value, data []byte) error {
 	}
 	return t.Root.Set(value, data)
 }
-//To get a key in tree we search if it the root otherwise we call the node.get implemented earlier  
+
+// To get a key in tree we search if it the root otherwise we call the node.get implemented earlier
 func (t *Tree) Get(key []byte) ([]byte, bool) {
 	if t.Root == nil {
 		return nil, false
@@ -149,4 +187,28 @@ func (t *Tree) Del(key []byte) error {
 		t.Root = nil
 	}
 	return nil
+}
+
+func (t *Tree) Ascend(visit func(key []byte, value []byte) bool) {
+	ascendInOrder(t.Root, visit)
+}
+
+func ascendInOrder(node *Node, visit func(key []byte, value []byte) bool) bool {
+	if node == nil {
+		return true
+	}
+
+	if !ascendInOrder(node.Left, visit) {
+		return false
+	}
+
+	if !visit(node.Key, node.Value) {
+		return false
+	}
+
+	if !ascendInOrder(node.Right, visit) {
+		return false
+	}
+
+	return true
 }

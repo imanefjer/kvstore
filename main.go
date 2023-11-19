@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-
+	
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		GetHandler(w, r, &tree, wal)
 
