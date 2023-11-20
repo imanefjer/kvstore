@@ -9,6 +9,7 @@ import (
 	"sync"
 )
 
+// TODO modify the way you write to the wal S if its  set and D if Del and also make it binary and  in recover make add the marker
 type Entry struct {
 	Key     []byte
 	Value   []byte
@@ -16,7 +17,7 @@ type Entry struct {
 }
 
 var (
-	
+
 	//ErrCorrupt is returned when the lod is corrupt
 	ErrCorrupt = errors.New("wal corrupt")
 	// ErrClosed is returned when an operation cannot be completed because
@@ -116,7 +117,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 	if w == nil {
 		return nil, ErrClosed
 	}
-	
+
 	checksum, err := w.CalculateCheckSum()
 	if err != nil {
 		return nil, err

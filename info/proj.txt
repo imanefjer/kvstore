@@ -1,4 +1,11 @@
 !!!!! Read levelDB
+curl "http://localhost:8084/get?key=4"
+curl "http://localhost:8084/set?key=4&value=75"
+go build 
+kvstore.exe
+
+json it will be needed in testing
+
 
 if i don't have goroutine i should delete mu mutex
 LSM tree // b+ tree LSM hssn

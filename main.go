@@ -28,7 +28,7 @@ func main() {
 	}
 	
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
-		GetHandler(w, r, &tree, wal)
+		GetHandler(w, r, &tree)
 
 	})
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {

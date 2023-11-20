@@ -6,6 +6,7 @@ import (
 )
 
 type Node struct {
+	marker bool //0 to represent del and 1 to represent set
 	Key   []byte
 	Value []byte
 	Left  *Node
@@ -27,13 +28,13 @@ func (n *Node) Set(key, value []byte) error {
 		return nil
 	case bytes.Compare(key, n.Key) == -1:
 		if n.Left == nil {
-			n.Left = &Node{Key: key, Value: value}
+			n.Left = &Node{Key: key, Value: value, marker: true}
 			return nil
 		}
 		return n.Left.Set(key, value)
 	case bytes.Compare(key, n.Key) == 1:
 		if n.Right == nil {
-			n.Right = &Node{Key: key, Value: value}
+			n.Right = &Node{Key: key, Value: value, marker: true}
 			return nil
 		}
 		return n.Right.Set(key, value)
@@ -50,7 +51,7 @@ func (n *Node) Get(key []byte) ([]byte, bool) {
 		return nil, false
 	}
 	switch {
-	case bytes.Equal(key, n.Key):
+	case bytes.Equal(key, n.Key) && n.marker:
 		return n.Value, true
 	case bytes.Compare(key, n.Key) == -1:
 		return n.Left.Get(key)
@@ -157,7 +158,7 @@ func (n *Node) Del(key []byte, parent *Node) error {
 
 func (t *Tree) Set(value, data []byte) error {
 	if t.Root == nil {
-		t.Root = &Node{Key: value, Value: data}
+		t.Root = &Node{Key: value, Value: data, marker: true}
 		return nil
 	}
 	return t.Root.Set(value, data)

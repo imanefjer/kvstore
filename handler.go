@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
+func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
 	key := r.URL.Query().Get("key")
 
 	if key == "" {
@@ -14,15 +14,7 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 	}
 	key1 := []byte(key)
 	value, err := tree.Get(key1)
-	entry := Entry{
-		Key:     key1,
-		Command: []byte("GET"),
-	}
-	err1 := wal.AppendCommand(&entry)
-	if err1 != nil {
-		http.Error(w, err1.Error(), http.StatusBadRequest)
-		return
-	}
+	
 	if !err {
 		http.Error(w, "key not found", http.StatusBadRequest)
 		return
