@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 )
 
 type Node struct {
@@ -51,8 +52,11 @@ func (n *Node) Get(key []byte) ([]byte, bool) {
 		return nil, false
 	}
 	switch {
-	case bytes.Equal(key, n.Key) && n.marker:
-		return n.Value, true
+	case bytes.Equal(key, n.Key):
+		if n.marker{
+			return n.Value, true
+		}
+		return nil, false
 	case bytes.Compare(key, n.Key) == -1:
 		return n.Left.Get(key)
 	default:
@@ -98,33 +102,8 @@ func (n *Node)len()int{
 	}
 	return 1+n.Left.len()+n.Right.len()
 }
-//  deleting in a binary search tree is quiet complicated in the case when we want to delete an inner node:
-// if its a right child of  its parent then we search for the largest value in its left subtreee  we replace the node's value
-// with this value (largest value== Lvalue) if it's  (largest value) then we call delete on this node Lvalue. If it is the left
-// child of it's parent node then we search for the smallest value in the node's right subtree
 
-func (n *Node) findMax(parent *Node) (*Node, *Node) {
-	if n == nil {
-		return nil, parent
-	}
-	if n.Right == nil {
-		return n, parent
-	}
-	return n.Right.findMax(n)
-
-}
-
-func (n *Node) replaceNode(parent, newValue *Node) error {
-	if n == nil {
-		return errors.New("we can not replace on a nil node")
-	}
-	if n == parent.Left {
-		parent.Left = newValue
-		return nil
-	}
-	parent.Right = newValue
-	return nil
-}
+// to delete a node we just look for it and make the marker false 
 func (n *Node) Del(key []byte, parent *Node) error {
 	if n == nil {
 		return errors.New("we can not delete a nil node")
@@ -135,24 +114,29 @@ func (n *Node) Del(key []byte, parent *Node) error {
 	case bytes.Compare(key, n.Key) == 1:
 		return n.Right.Del(key, n)
 	default:
-		// for a leaf
-		if n.Left == nil && n.Right == nil {
-			n.replaceNode(parent, nil)
-			return nil
+		if !n.marker {
+			return errors.New("the key is already deleted")
 		}
-		// for a node with one child
-		if n.Left == nil {
-			n.replaceNode(parent, n.Right)
-			return nil
-		}
-		if n.Right == nil {
-			n.replaceNode(parent, n.Left)
-			return nil
-		}
-		replNode, replParent := n.Left.findMax(n)
-		n.Key = replNode.Key
-		n.Value = replNode.Value
-		return replNode.Del(replNode.Key, replParent)
+		n.marker = false
+		return nil
+		// // for a leaf
+		// if n.Left == nil && n.Right == nil {
+		// 	n.replaceNode(parent, nil)
+		// 	return nil
+		// }
+		// // for a node with one child
+		// if n.Left == nil {
+		// 	n.replaceNode(parent, n.Right)
+		// 	return nil
+		// }
+		// if n.Right == nil {
+		// 	n.replaceNode(parent, n.Left)
+		// 	return nil
+		// }
+		// replNode, replParent := n.Left.findMax(n)
+		// n.Key = replNode.Key
+		// n.Value = replNode.Value
+		// return replNode.Del(replNode.Key, replParent)
 	}
 }
 
@@ -212,4 +196,23 @@ func ascendInOrder(node *Node, visit func(key []byte, value []byte) bool) bool {
 	}
 
 	return true
+}
+
+func Print(tree *Tree){
+	if (tree.Root == nil){
+		fmt.Println("empty tree")
+	}
+	printTree(tree.Root)
+}
+func printTree (node *Node){
+	if node == nil{
+		return
+	}
+	printTree(node.Left)
+	mar:= "true"
+	if !node.marker{
+		mar ="false"
+	}
+	fmt.Println("key: ",string(node.Key)," value: ",string(node.Value), "marker",mar )
+	printTree(node.Right)
 }
