@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-type Cmd int
+type Cmd1 int
 
 const (
-	Get Cmd = iota
+	Get Cmd1 = iota
 	Set
 	Del
 	Ext
@@ -75,7 +75,7 @@ type Repl struct {
 	out io.Writer
 }
 
-func (re *Repl) parseCmd(buf []byte) (Cmd, []string, error) {
+func (re *Repl) parseCmd(buf []byte) (Cmd1, []string, error) {
 	line := string(buf)
 	elements := strings.Fields(line)
 	if len(elements) < 1 {

@@ -9,6 +9,7 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
 	key := r.URL.Query().Get("key")
 
 	if key == "" {
+		fmt.Println("key parameter is missing")
 		http.Error(w, "key parameter is missing", http.StatusBadRequest)
 		return
 	}
@@ -16,6 +17,7 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
 	value, err := tree.Get(key1)
 	
 	if !err {
+		fmt.Println("key not found")
 		http.Error(w, "key not found", http.StatusBadRequest)
 		return
 	}
@@ -27,6 +29,7 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 	value := r.URL.Query().Get("value")
 
 	if key == "" || value == "" {
+		fmt.Println("key or value parameter is missing")	
 		http.Error(w, "key or value parameter is missing", http.StatusBadRequest)
 		return
 	}
@@ -40,7 +43,7 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 	entry := Entry{
 		Key:     key1,
 		Value:   value1,
-		Command: []byte("SET"),
+		Command: Set,
 	}
 	err := wal.AppendCommand(&entry)
 	if err != nil {
@@ -53,18 +56,20 @@ func DelHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 	key := r.URL.Query().Get("key")
 
 	if key == "" {
+		fmt.Println("key parameter is missing")
 		http.Error(w, "key parameter is missing", http.StatusBadRequest)
 		return
 	}
 	key1 := []byte(key)
 	err := tree.Del(key1)
 	if err != nil {
+		fmt.Println("key not found")
 		http.Error(w, "key not found", http.StatusBadRequest)
 		return
 	}
 	entry := Entry{
 		Key:     key1,
-		Command: []byte("DEL"),
+		Command: Del,
 	}
 	err1 := wal.AppendCommand(&entry)
 	if err1 != nil {

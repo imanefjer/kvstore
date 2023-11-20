@@ -2,19 +2,25 @@ package main
 
 import (
 	"bytes"
-	// "context"
 	"errors"
 	"hash/crc32"
 	"io"
 	"sync"
 )
 
-// TODO modify the way you write to the wal S if its  set and D if Del and also make it binary and  in recover make add the marker
+// TODO  make it binary 
 type Entry struct {
 	Key     []byte
 	Value   []byte
-	Command []byte
+	Command Cmd
 }
+
+type Cmd int
+
+const (
+	Set Cmd = iota
+	Del
+)
 
 var (
 
@@ -57,23 +63,69 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	if e == nil {
 		return errors.New("nil entry")
 	}
-	if e.Command == nil {
-		return errors.New("nil command")
+	if e.Command != Set && e.Command != Del{
+		return errors.New("invalid command")
 	}
 	if e.Key == nil {
 		return errors.New("nil key")
 	}
-	keyLen, valueLen := len(e.Key), len(e.Value)
-	entry := make([]byte, w.entrySize)
-	entry[0] = byte(keyLen)
-	entry[1] = byte(valueLen)
-	copy(entry[2:5], e.Command)
-	copy(entry[5:keyLen+5], e.Key)
-	copy(entry[keyLen+5:keyLen+valueLen+5], e.Value)
-	_, err = w.file.Write(entry)
-	if err != nil {
-		return err
+	//the value could be nil if the command is del
+	if e.Value == nil && e.Command == Set {
+		return errors.New("nil value")
 	}
+
+	keyLen, valueLen := len(e.Key), len(e.Value)
+	key := make([]byte, keyLen)
+	value := make([]byte, valueLen)
+	keyLenn := make([]byte, 1)
+	valueLenn := make([]byte, 1)
+	keyLenn[0] = byte(keyLen)
+	valueLenn[0] = byte(valueLen)
+	copy(key[:], e.Key)
+	copy(value[:], e.Value)
+	command := make([]byte, 1)
+
+	if e.Command == Set {
+		command[0] = byte(0)
+	} else {
+		command[0] = byte(1)
+	}
+	len:= keyLen + valueLen + 1 + 1 + 1
+	entry := make([]byte, len)
+	//command
+	// binary.BigEndian.PutUint32(command,uint32(byte(e.Command)))
+	// if _, err := w.file.Write(command); err != nil {
+	// 	return err
+	// }
+	copy(entry[0:1], command)
+	//key length
+	// binary.BigEndian.PutUint32(keyLenn, uint32(keyLen))
+	// if _, err := w.file.Write(keyLenn); err != nil {
+	// 	return err
+	// }
+	copy(entry[1:2], keyLenn)
+	//key
+	// keyUint32 := binary.BigEndian.Uint32(e.Key)
+	// binary.BigEndian.PutUint32(key, keyUint32)
+	// if _, err := w.file.Write(key); err != nil {
+	// 	return err
+	// }
+
+	copy(entry[2:keyLen+2], key)
+	//value length
+	// binary.BigEndian.PutUint32(valueLenn, uint32(valueLen))
+	// if _, err := w.file.Write(valueLenn); err != nil {
+	// 	return err
+	// }
+	copy(entry[keyLen+2:keyLen+3], valueLenn)
+	//value
+	// valueUint32 := binary.BigEndian.Uint32(e.Value)
+	// binary.BigEndian.PutUint32(key, valueUint32)
+	// if _, err := w.file.Write(key); err != nil {
+	// 	return err
+	// }
+	copy(entry[keyLen+3:keyLen+valueLen+3], value)
+
 	w.checksum, _ = w.CalculateCheckSum()
 	return nil
 }
@@ -117,7 +169,8 @@ func (w *Wal) Read() ([]*Entry, error) {
 	if w == nil {
 		return nil, ErrClosed
 	}
-
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	checksum, err := w.CalculateCheckSum()
 	if err != nil {
 		return nil, err
@@ -125,31 +178,59 @@ func (w *Wal) Read() ([]*Entry, error) {
 	if checksum != w.checksum {
 		return nil, ErrCorrupt
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	
 	var entries []*Entry
 	err = w.begin()
 	if err != nil {
 		return nil, err
 	}
+	
 	for {
-		entry := make([]byte, w.entrySize)
-		n, err := w.file.Read(entry)
+		// Read command
+		commandByte := make([]byte, 1)
+		_, err := w.file.Read(commandByte)
 		if err == io.EOF {
 			// End of file reached
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		if n != w.entrySize {
-			return nil, errors.New("unexpected entry size")
+		command := Cmd(commandByte[0])
+
+		// Read key length
+		keyLenByte := make([]byte, 1)
+		_, err = w.file.Read(keyLenByte)
+		if err != nil {
+			return nil, err
 		}
-		keyLen, valueLen := entry[0], entry[1]
+		keyLen := int(keyLenByte[0])
+
+		// Read key
+		key := make([]byte, keyLen)
+		_, err = w.file.Read(key)
+		if err != nil {
+			return nil, err
+		}
+
+		// Read value length
+		valueLenByte := make([]byte, 1)
+		_, err = w.file.Read(valueLenByte)
+		if err != nil {
+			return nil, err
+		}
+		valueLen := int(valueLenByte[0])
+
+		// Read value
+		value := make([]byte, valueLen)
+		_, err = w.file.Read(value)
+		if err != nil {
+			return nil, err
+		}
 
 		e := &Entry{
-			Command: entry[2:5],
-			Key:     entry[5 : 5+keyLen],
-			Value:   entry[5+keyLen : 5+keyLen+valueLen],
+			Command: command,
+			Key:     key,
+			Value:   value,
 		}
 
 		entries = append(entries, e)
@@ -186,18 +267,16 @@ func Recover(w *Wal, t *Tree) error {
 	if checksum != w.checksum {
 		return ErrCorrupt
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
 
 	entries, err := w.Read()
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		switch string(entry.Command) {
-		case "SET":
+		switch entry.Command {
+		case Set:
 			t.Set(entry.Key, entry.Value)
-		case "DEL":
+		case Del:
 			t.Del(entry.Key)
 		}
 	}
