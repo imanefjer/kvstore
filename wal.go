@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// TODO  make it binary 
+// TODO  make it binary
 type Entry struct {
 	Key     []byte
 	Value   []byte
@@ -44,9 +44,7 @@ func (w *Wal) begin() error {
 	return err
 }
 
-// To write in the WAL: each entry has a fixed size of 100. We store the length of the key and the length
-// of the value to make the Read function easier. Then, we store the command, key, and value. We ensure
-// that the WAL was not corrupted by checking the checksum, and we update it after writing to the file.
+
 func (w *Wal) AppendCommand(e *Entry) error {
 	if w == nil {
 		return ErrClosed
@@ -74,16 +72,13 @@ func (w *Wal) AppendCommand(e *Entry) error {
 		return errors.New("nil value")
 	}
 
-	keyLen, valueLen := len(e.Key), len(e.Value)
-	key := make([]byte, keyLen)
-	value := make([]byte, valueLen)
-	keyLenn := make([]byte, 1)
-	valueLenn := make([]byte, 1)
-	keyLenn[0] = byte(keyLen)
-	valueLenn[0] = byte(valueLen)
-	copy(key[:], e.Key)
-	copy(value[:], e.Value)
-	command := make([]byte, 1)
+	keyLen := len(e.Key)
+	valueLen := len(e.Value)
+	keyLenn := []byte{byte(len(e.Key))}
+	valueLenn := []byte{byte(len(e.Value))}
+	key := []byte(e.Key)
+	value := []byte(e.Value)
+	command := []byte{byte(e.Command)}
 
 	if e.Command == Set {
 		command[0] = byte(0)
@@ -92,40 +87,14 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	}
 	len:= keyLen + valueLen + 1 + 1 + 1
 	entry := make([]byte, len)
-	//command
-	// binary.BigEndian.PutUint32(command,uint32(byte(e.Command)))
-	// if _, err := w.file.Write(command); err != nil {
-	// 	return err
-	// }
 	copy(entry[0:1], command)
-	//key length
-	// binary.BigEndian.PutUint32(keyLenn, uint32(keyLen))
-	// if _, err := w.file.Write(keyLenn); err != nil {
-	// 	return err
-	// }
 	copy(entry[1:2], keyLenn)
-	//key
-	// keyUint32 := binary.BigEndian.Uint32(e.Key)
-	// binary.BigEndian.PutUint32(key, keyUint32)
-	// if _, err := w.file.Write(key); err != nil {
-	// 	return err
-	// }
-
 	copy(entry[2:keyLen+2], key)
-	//value length
-	// binary.BigEndian.PutUint32(valueLenn, uint32(valueLen))
-	// if _, err := w.file.Write(valueLenn); err != nil {
-	// 	return err
-	// }
 	copy(entry[keyLen+2:keyLen+3], valueLenn)
-	//value
-	// valueUint32 := binary.BigEndian.Uint32(e.Value)
-	// binary.BigEndian.PutUint32(key, valueUint32)
-	// if _, err := w.file.Write(key); err != nil {
-	// 	return err
-	// }
-	copy(entry[keyLen+3:keyLen+valueLen+3], value)
-
+	copy(entry[keyLen+3:keyLen+valueLen+3], value)	
+	if _, err := w.file.Write(entry); err != nil {
+		return err
+	}
 	w.checksum, _ = w.CalculateCheckSum()
 	return nil
 }
@@ -188,6 +157,14 @@ func (w *Wal) Read() ([]*Entry, error) {
 	for {
 		// Read command
 		commandByte := make([]byte, 1)
+		// err = binary.Read(w.file,binary.BigEndian, commandByte)
+
+		// if err == io.EOF {
+		// 	// End of file reached
+		// 	break
+		// } else if err != nil {
+		// 	return nil, err
+		// }
 		_, err := w.file.Read(commandByte)
 		if err == io.EOF {
 			// End of file reached
@@ -198,7 +175,11 @@ func (w *Wal) Read() ([]*Entry, error) {
 		command := Cmd(commandByte[0])
 
 		// Read key length
+		// `keyLenByte` is a byte slice that is used to store the length of the key in bytes. It is read from
+		// the WAL file using the `binary.Read` function.
 		keyLenByte := make([]byte, 1)
+		// err = binary.Read(w.file,binary.BigEndian, keyLenByte)
+
 		_, err = w.file.Read(keyLenByte)
 		if err != nil {
 			return nil, err
@@ -207,6 +188,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 		// Read key
 		key := make([]byte, keyLen)
+		// err = binary.Read(w.file,binary.BigEndian, key)
 		_, err = w.file.Read(key)
 		if err != nil {
 			return nil, err
@@ -214,6 +196,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 		// Read value length
 		valueLenByte := make([]byte, 1)
+		// err = binary.Read(w.file,binary.BigEndian, valueLenByte)
 		_, err = w.file.Read(valueLenByte)
 		if err != nil {
 			return nil, err
@@ -222,6 +205,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 		// Read value
 		value := make([]byte, valueLen)
+		// err = binary.Read(w.file, binary.BigEndian, value)
 		_, err = w.file.Read(value)
 		if err != nil {
 			return nil, err

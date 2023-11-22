@@ -20,6 +20,7 @@ func main() {
 		fmt.Println(err)
 	}
 	tree := Tree{}
+	// value := "hjkh"
 	// tree.Set([]byte("hey"), []byte("bye"))
 	// tree.Set([]byte("hey1"), []byte("bye1"))
 	// tree.Set([]byte("hey2"), []byte("bye2"))
@@ -46,7 +47,6 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		GetHandler(w, r, &tree)
 
