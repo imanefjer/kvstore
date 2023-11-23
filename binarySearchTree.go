@@ -12,6 +12,7 @@ type Node struct {
 	Value []byte
 	Left  *Node
 	Right *Node
+	Parent *Node
 }
 type Tree struct {
 	Root *Node
@@ -29,13 +30,13 @@ func (n *Node) Set(key, value []byte) error {
 		return nil
 	case bytes.Compare(key, n.Key) == -1:
 		if n.Left == nil {
-			n.Left = &Node{Key: key, Value: value, marker: true}
+			n.Left = &Node{Key: key, Value: value, marker: true, Parent: n}
 			return nil
 		}
 		return n.Left.Set(key, value)
 	case bytes.Compare(key, n.Key) == 1:
 		if n.Right == nil {
-			n.Right = &Node{Key: key, Value: value, marker: true}
+			n.Right = &Node{Key: key, Value: value, marker: true, Parent: n}
 			return nil
 		}
 		return n.Right.Set(key, value)

@@ -16,7 +16,7 @@ var (
 	//ErrKeynotfound is returned when the lod is corrupt
 	ErrKeynotfound = errors.New("key not found")
 )
-
+//TODO make sure that writing is good and then implemnts the searching and check if wz should store the largest key or the length ot the largest key same for smallest 
 type SStable struct {
 	file        io.ReadWriteSeeker
 	magicNumber [4]byte
@@ -74,6 +74,16 @@ type SStables struct {
 //	}
 func NewSST(path string) (*SStables, error) {
 	// Open the directory
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Directory does not exist, create it
+		err := os.Mkdir(path, 0755) // 0755 is the permission mode, you can adjust it as needed
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		// Some other error occurred
+		return nil, err
+	} 
 	dir, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -232,78 +242,81 @@ func openSStable(path string) (*SStable, error) {
 func (s *SStables) Get(key []byte) ([]byte, error) {
 	return nil, nil
 }
+func (node *Node) format() []byte {
+	var marker []byte
+	if node.marker {
+		marker = encodeInt(1)
+	} else {
+		marker = encodeInt(0)
+	}
+	len1 := len(node.Key)
+	len2 := len(node.Value)
+	keyLen := encodeInt(len1)
+	valueLen := encodeInt(len2)
+	key := []byte(node.Key)
+	value := []byte(node.Value)
+	res := make([]byte, len1+len2+24)
+	copy(res[0:8], marker)
+	copy(res[8:16], keyLen)
+	copy(res[16:len1+16], key)
+	copy(res[len1+16:len1+24], valueLen)
+	copy(res[len1+24:len1+len2+24], value)
+	return res
+}
 
 // when we flush to disk we create a new sstable that contains the content of the tree
 func (s *SStables) Flush(tree *Tree, wal *Wal) error {
-	// add abyte fo delete and set from the wal
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.numOfSStable++
+	// s.mu.Lock()
+	// defer s.mu.Unlock()
 	//create a new sstable
-	file, err := os.OpenFile(s.Name(), os.O_CREATE|os.O_RDWR, 0755)
+	path := fmt.Sprintf(s.path+"/"+s.Name())
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 	//write the magic number
-	if _, err := file.Write([]byte{0x00, 0x00, 0x00, 0x00}); err != nil {
+	magicNumber := encodeInt(0)
+	if _, err := file.Write(magicNumber); err != nil {
 		return err
 	}
 	//write the entry count
-	entryCount := make([]byte, 4)
-	binary.BigEndian.PutUint32(entryCount, uint32(tree.Len()))
+	entryCount := encodeInt(tree.Len())
 	if _, err := file.Write(entryCount); err != nil {
 		return err
 	}
 	//write the smallest key
-	smallestKey := make([]byte, 4)
-	minKey := binary.BigEndian.Uint32(tree.Min())
-	binary.BigEndian.PutUint32(smallestKey, minKey)
-	if _, err := file.Write(smallestKey); err != nil {
+	minKey := encodeInt(len(tree.Min()))
+	if _, err := file.Write(minKey); err != nil {
 		return err
 	}
 	//write the largest key
-	largestKey := make([]byte, 4)
-	maxKey := binary.BigEndian.Uint32(tree.Max())
-	binary.BigEndian.PutUint32(largestKey, maxKey)
-	if _, err := file.Write(largestKey); err != nil {
+	maxKey := encodeInt(len((tree.Max())))
+	if _, err := file.Write(maxKey); err != nil {
 		return err
 	}
 	//write the version
-	version := make([]byte, 2)
-	binary.BigEndian.PutUint16(version, uint16(1))
+	version := encodeInt(1)
 	if _, err := file.Write(version); err != nil {
 		return err
 	}
-	//write the entries
-	tree.Ascend(func(key []byte, value []byte) bool {
-		//write the key length
-		keyLen := make([]byte, 1)
-		keyLen[0] = byte(len(key))
-		if _, err := file.Write(keyLen); err != nil {
-			return false
+
+	for it := tree.Iterator(); it.HasNext(); {
+		currNode, err := it.Next()
+		if err != nil {
+			return err
 		}
-		//write the value length
-		valueLen := make([]byte, 1)
-		valueLen[0] = byte(len(value))
-		if _, err := file.Write(valueLen); err != nil {
-			return false
+		nodeFormat := currNode.format()
+		if _, err := file.Write(nodeFormat); err != nil {
+			return fmt.Errorf("failed to write to disk table %d: %w", s.numOfSStable, err)
 		}
-		//write the key
-		if _, err := file.Write(key); err != nil {
-			return false
-		}
-		//write the value
-		if _, err := file.Write(value); err != nil {
-			return false
-		}
-		return true
-	})
-	//write the checksum
+	}
 	checksum := crc32.ChecksumIEEE([]byte(file.Name()))
-	checksumBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(checksumBytes, checksum)
+	checksumBytes := encodeInt(int(checksum))
 	if _, err := file.Write(checksumBytes); err != nil {
+		return err
+	}
+	//close the file
+	if err := file.Close(); err != nil {
 		return err
 	}
 	s.numOfSStable++
@@ -312,6 +325,8 @@ func (s *SStables) Flush(tree *Tree, wal *Wal) error {
 
 // to name the sstable
 func (s *SStables) Name() string {
+	if s == nil {
+		return "Invalid SStables (nil)"
+	}
 	return fmt.Sprintf("file%d.sst", s.numOfSStable)
-
 }

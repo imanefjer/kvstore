@@ -6,7 +6,6 @@ import (
 	"os"
 )
 
-
 func main() {
 	f, err := os.OpenFile("wal.log", os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
@@ -45,6 +44,14 @@ func main() {
 	//In case the program exits and some elements in the tree were not flushed to disk
 	err = Recover(wal, &tree)
 	if err != nil {
+		fmt.Println(err)
+	}
+	sst, err := NewSST("sstFiles")
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = sst.Flush(&tree, wal)
+	if err != nil{
 		fmt.Println(err)
 	}
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
