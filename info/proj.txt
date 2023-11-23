@@ -1,6 +1,8 @@
 !!!!! Read levelDB
 curl "http://localhost:8084/get?key=4"
-curl "http://localhost:8084/set?key=4&value=75"
+curl -X POST -H "Content-Type: application/json" -d @data.json http://localhost:8084/test
+curl -X DELETE "http://localhost:8084/del?key=key1"
+
 go build 
 kvstore.exe
 

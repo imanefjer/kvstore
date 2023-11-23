@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -24,9 +25,26 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
 	fmt.Println("Gets key: ", string(value))
 }
 
+type KeyValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
 func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
-	key := r.URL.Query().Get("key")
-	value := r.URL.Query().Get("value")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+	decoder := json.NewDecoder(r.Body)
+	var t KeyValue
+	err := decoder.Decode(&t)
+	if err != nil {
+		http.Error(w, "Error decoding JSON data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	fmt.Println(t.Key)
+	fmt.Println(t.Value)
+	key := t.Key
+	value := t.Value
 
 	if key == "" || value == "" {
 		fmt.Println("key or value parameter is missing")	
@@ -45,7 +63,7 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 		Value:   value1,
 		Command: Set,
 	}
-	err := wal.AppendCommand(&entry)
+	err = wal.AppendCommand(&entry)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -79,3 +97,6 @@ func DelHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 
 	fmt.Println("the deleted key: ", string(key))
 }
+
+
+

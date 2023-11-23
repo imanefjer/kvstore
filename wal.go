@@ -10,6 +10,7 @@ import (
 )
 
 // TODO  make it binary
+// TODO
 type Entry struct {
 	Key     []byte
 	Value   []byte
@@ -25,8 +26,7 @@ const (
 
 var (
 
-	//ErrCorrupt is returned when the lod is corrupt
-	ErrCorrupt = errors.New("wal corrupt")
+	
 	// ErrClosed is returned when an operation cannot be completed because
 	// the wal is closed.
 	ErrClosed = errors.New("wal closed")
@@ -34,8 +34,6 @@ var (
 
 type Wal struct {
 	file      io.ReadWriteSeeker
-	entrySize int
-	checksum  uint32
 	mu        sync.Mutex //
 
 }
@@ -46,28 +44,28 @@ func (w *Wal) begin() error {
 }
 //encodes the int as slice of bytes 
 func encodeInt(x int)[]byte{
-	var encoded [8]byte
-	binary.BigEndian.PutUint64(encoded[:], uint64(x))
+	var encoded [4]byte
+	binary.BigEndian.PutUint32(encoded[:], uint32(x))
 	return encoded[:]
 }
 //decodes the slice of bytes as an int
 func decodeInt(encoded []byte) int {
-	return int(binary.BigEndian.Uint64(encoded))
+	return int(binary.BigEndian.Uint32(encoded))
 }
-
+func encodeVersion(v int)[]byte {
+	var encoded [2]byte
+	binary.BigEndian.PutUint16(encoded[:], uint16(v))
+	return encoded[:]
+}
+func decodeVersion(encoded []byte) int {
+	return int(binary.BigEndian.Uint16(encoded))
+}
 //appendCommand write to the wal the command that has been executed it first 
 //stores the command (0 if Set and 1 if Del ) then the length of the key then the key
-//then the length of the value and the finally the value and it update the checksum associated to the wal
+//then the length of the value 
 func (w *Wal) AppendCommand(e *Entry) error {
 	if w == nil {
 		return ErrClosed
-	}
-	checksum, err := w.CalculateCheckSum()
-	if err != nil {
-		return err
-	}
-	if checksum != w.checksum {
-		return ErrCorrupt
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -98,17 +96,16 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	} else {
 		command = encodeInt(1)
 	}
-	len:= keyLen + valueLen + 24
+	len:= keyLen + valueLen + 12
 	entry := make([]byte, len)
-	copy(entry[0:8], command)
-	copy(entry[8:16], keyLenn)
-	copy(entry[16:keyLen+16], key)
-	copy(entry[keyLen+16:keyLen+24], valueLenn)
-	copy(entry[keyLen+24:keyLen+valueLen+24], value)	
+	copy(entry[0:4], command)
+	copy(entry[4:8], keyLenn)
+	copy(entry[8:keyLen+8], key)
+	copy(entry[keyLen+8:keyLen+12], valueLenn)
+	copy(entry[keyLen+12:keyLen+valueLen+12], value)	
 	if _, err := w.file.Write(entry); err != nil {
 		return err
 	}
-	w.checksum, _ = w.CalculateCheckSum()
 	return nil
 }
 
@@ -116,8 +113,6 @@ func (w *Wal) AppendCommand(e *Entry) error {
 func NewWal(f io.ReadWriteSeeker) *Wal {
 	return &Wal{
 		file:      f,
-		entrySize: 100,
-		checksum:  0,
 	}
 }
 
@@ -125,20 +120,12 @@ func NewWal(f io.ReadWriteSeeker) *Wal {
 // After each flush to the disk, instead of creating a new WAL, we choose to delete the content of the WAL
 // using truncate, which reduces the size of the file, we should check if it's available for the WAL.
 func (w *Wal) DeleteContent(filePath string) error {
-	checksum, err := w.CalculateCheckSum()
-	if err != nil {
-		return err
-	}
-	if checksum != w.checksum {
-		return ErrCorrupt
-	}
 	if f, ok := w.file.(interface{ Truncate(size int64) error }); ok {
 		// Truncate the file
 		err := f.Truncate(0)
 		if err != nil {
 			return err
 		}
-		w.checksum = 0
 		return nil
 	} else {
 		return errors.New("truncate method is not available")
@@ -153,25 +140,16 @@ func (w *Wal) Read() ([]*Entry, error) {
 		return nil, ErrClosed
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	checksum, err := w.CalculateCheckSum()
-	if err != nil {
-		return nil, err
-	}
-	//check if the wal was not corrupt
-	if checksum != w.checksum {
-		return nil, ErrCorrupt
-	}
-	
+	defer w.mu.Unlock()	
 	var entries []*Entry
-	err = w.begin()
+	err := w.begin()
 	if err != nil {
 		return nil, err
 	}
 	
 	for {
 		// Read command
-		var encodedCommandByte [8]byte
+		var encodedCommandByte [4]byte
 		if _, err:= w.file.Read(encodedCommandByte[:]); err == io.EOF{
 			break
 		}else if err != nil{
@@ -180,7 +158,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 		commandByte := decodeInt(encodedCommandByte[:])
 		command := Cmd(commandByte)
 		// Read key length
-		var encodedKeyLen [8]byte
+		var encodedKeyLen [4]byte
 		if _, err:= w.file.Read(encodedKeyLen[:]); err != nil{
 			return nil, err
 		}
@@ -192,7 +170,7 @@ func (w *Wal) Read() ([]*Entry, error) {
 			return nil, err
 		}
 		// Read value length
-		var encodedValueLength [8]byte
+		var encodedValueLength [4]byte
 		if _, err:= w.file.Read(encodedValueLength[:]); err != nil{
 			return nil, err
 		}
@@ -204,8 +182,8 @@ func (w *Wal) Read() ([]*Entry, error) {
 		}
 		e := &Entry{
 			Command: command,
-			Key:     nil,
-			Value:   nil,
+			Key:     key,
+			Value:   value,
 		}
 
 		entries = append(entries, e)
@@ -235,14 +213,6 @@ func (w *Wal) CalculateCheckSum() (uint32, error) {
 // In case of a crash, we use this function to redo the previous commands that were recorded
 // before the crash but weren't uploaded to the SSTables.
 func Recover(w *Wal, t *Tree) error {
-	checksum, err := w.CalculateCheckSum()
-	if err != nil {
-		return err
-	}
-	if checksum != w.checksum {
-		return ErrCorrupt
-	}
-
 	entries, err := w.Read()
 	if err != nil {
 		return err
