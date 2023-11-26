@@ -6,7 +6,9 @@ import (
 	"errors"
 	"hash/crc32"
 	"io"
+	"os"
 	"sync"
+	"strings"
 )
 
 // TODO  make it binary
@@ -34,6 +36,7 @@ var (
 
 type Wal struct {
 	file      io.ReadWriteSeeker
+	name 		string
 	mu        sync.Mutex //
 
 }
@@ -110,32 +113,33 @@ func (w *Wal) AppendCommand(e *Entry) error {
 }
 
 // creating a ne wal
-func NewWal(f io.ReadWriteSeeker) *Wal {
+func NewWal(f io.ReadWriteSeeker, name string) *Wal {
 	return &Wal{
 		file:      f,
+		name: 	   name,
 	}
 }
 
 
 // After each flush to the disk, instead of creating a new WAL, we choose to delete the content of the WAL
 // using truncate, which reduces the size of the file, we should check if it's available for the WAL.
-func (w *Wal) DeleteContent(filePath string) error {
-	if f, ok := w.file.(interface{ Truncate(size int64) error }); ok {
-		// Truncate the file
-		err := f.Truncate(0)
-		if err != nil {
-			return err
-		}
-		return nil
-	} else {
-		return errors.New("truncate method is not available")
+func (w *Wal) WaterMark() error {
+	_, err := w.file.Seek(0 ,io.SeekEnd)
+	if err != nil {
+		return err
 	}
+	watermark := []byte("WATERMARK")
+	if _, err := w.file.Write(watermark); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Read function will loop and  read firstly the command and encoded if its the EOF then
 // it will break if it not it will try and read it and associated to the specific command
 // then it will read the key length, the key, the value length and the value
 func (w *Wal) Read() ([]*Entry, error) {
+
 	if w == nil {
 		return nil, ErrClosed
 	}
@@ -146,7 +150,20 @@ func (w *Wal) Read() ([]*Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+	//find the last watermark
+	lastWatermarkPos, err := w.findLastWatermarkPosition()
+
+	if lastWatermarkPos >= 0 {
+		if err != nil {
+			return nil, err
+		}
+		// Seek to the position after the last watermark
+		_, err = w.file.Seek(lastWatermarkPos+int64(watermarkSize), io.SeekStart)
+		if err != nil {
+			return nil , err
+		}
+	}
+
 	for {
 		// Read command
 		var encodedCommandByte [4]byte
@@ -190,6 +207,38 @@ func (w *Wal) Read() ([]*Entry, error) {
 	}
 
 	return entries, nil
+}
+func (w *Wal)findLastWatermarkPosition() (int64, error) {
+	var pos int64 = -1
+
+	buffer := make([]byte, watermarkSize)
+
+	// Get the size of the file
+	fileInfo, err := os.Stat(w.name)
+	if err != nil {
+		return pos, err
+	}
+	fileSize := fileInfo.Size()
+
+	// Start reading from the end of the file
+	for offset := int64(0); offset <= fileSize-watermarkSize; offset++ {
+		_, err := w.file.Seek(fileSize-offset-watermarkSize, io.SeekStart)
+		if err != nil {
+			return 0, err
+		}
+		_, err = w.file.Read(buffer)
+		if err != nil {
+			return pos, err
+		}
+
+		// Check if the current buffer contains the watermark
+		if strings.EqualFold(string(buffer), "WATERMARK") { // Change "mark" to your actual watermark
+			pos = fileSize - offset - watermarkSize
+			break
+		}
+	}
+
+	return pos, nil
 }
 
 func (w *Wal) CalculateCheckSum() (uint32, error) {

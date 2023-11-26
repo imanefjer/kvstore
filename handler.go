@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 )
-
-func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
+var (
+	max = 10
+)
+func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, sst *SStables) {
 	key := r.URL.Query().Get("key")
 
 	if key == "" {
@@ -15,11 +17,22 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree) {
 		return
 	}
 	key1 := []byte(key)
-	value, err := tree.Get(key1)
-	
-	if !err {
-		fmt.Println("key not found")
-		http.Error(w, "key not found", http.StatusBadRequest)
+	value, exist := tree.Get(key1)
+
+	if !exist {
+		// search in sstfiles
+		value, err := sst.Search(key1)
+		if err == ErrDeleted || err == ErrKeynotfound {
+			fmt.Println("key not found")
+			http.Error(w, "key not found", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			fmt.Println(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		fmt.Println("Gets key:  ", string(value))
 		return
 	}
 	fmt.Println("Gets key: ", string(value))
@@ -29,7 +42,7 @@ type KeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
-func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
+func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal, sst *SStables) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -41,13 +54,11 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 		http.Error(w, "Error decoding JSON data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	fmt.Println(t.Key)
-	fmt.Println(t.Value)
 	key := t.Key
 	value := t.Value
 
 	if key == "" || value == "" {
-		fmt.Println("key or value parameter is missing")	
+		fmt.Println("key or value parameter is missing")
 		http.Error(w, "key or value parameter is missing", http.StatusBadRequest)
 		return
 	}
@@ -69,8 +80,31 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 		return
 	}
 	fmt.Println("Sets key: ", string(key), " value = ", string(value))
+	fmt.Println(tree.Len())
+
+	//todo write a function to do this 
+	if tree.Len() == max {
+		err = sst.Flush(tree)
+		tree = &Tree{}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err = wal.WaterMark()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if (sst.numOfSStable == maxFiles){
+			err = sst.Compact()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+	}
 }
-func DelHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
+func DelHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal, sst *SStables) {
 	key := r.URL.Query().Get("key")
 
 	if key == "" {
@@ -94,9 +128,26 @@ func DelHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal) {
 		http.Error(w, err1.Error(), http.StatusBadRequest)
 		return
 	}
-
 	fmt.Println("the deleted key: ", string(key))
+	if tree.Len() == max {
+		err = sst.Flush(tree)
+		tree = &Tree{}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err = wal.WaterMark()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if (sst.numOfSStable == maxFiles){
+			err = sst.Compact()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+	}
 }
-
-
-
