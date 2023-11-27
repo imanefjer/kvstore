@@ -1,6 +1,6 @@
 !!!!! Read levelDB
 curl "http://localhost:8084/get?key=4"
-curl -X POST -H "Content-Type: application/json" -d @data.json http://localhost:8084/test
+curl -X POST -H "Content-Type: application/json" -d @data.json http://localhost:8084/set
 curl -X DELETE "http://localhost:8084/del?key=key1"
 
 go build 

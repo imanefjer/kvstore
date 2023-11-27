@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
+	// "fmt"
 )
 
 type Node struct {
@@ -17,8 +17,6 @@ type Node struct {
 type Tree struct {
 	Root *Node
 }
-
-// This function is used to insert a new node into a binary search tree by respecting the rules in the binary search tree
 
 func (n *Node) Set(key, value []byte) error {
 	if n == nil {
@@ -45,25 +43,23 @@ func (n *Node) Set(key, value []byte) error {
 	}
 }
 
-// The `Get` function is used to search for a specific value in a binary search tree. It takes a value
-// as input and returns the corresponding data associated with that value, along with a boolean
-// indicating whether the value was found or not.
-func (n *Node) Get(key []byte) ([]byte, bool) {
+func (n *Node) Get(key []byte) ([]byte, error) {
 	if n == nil {
-		return nil, false
+		return nil, ErrKeynotfound
 	}
 	switch {
 	case bytes.Equal(key, n.Key):
 		if n.marker{
-			return n.Value, true
+			return n.Value, nil
 		}
-		return nil, false
+		return nil, ErrDeleted
 	case bytes.Compare(key, n.Key) == -1:
 		return n.Left.Get(key)
 	default:
 		return n.Right.Get(key)
 	}
 }
+
 //the max key in the tree
 func (t Tree) Max() []byte {
 	if t.Root == nil {
@@ -90,6 +86,7 @@ func (n *Node) min() []byte {
 	}
 	return n.Left.min()
 }
+
 //Len of the tree
 func (t Tree)Len() int{
 	if t.Root==nil{
@@ -104,10 +101,9 @@ func (n *Node)len()int{
 	return 1+n.Left.len()+n.Right.len()
 }
 
-// to delete a node we just look for it and make the marker false 
 func (n *Node) Del(key []byte, parent *Node) error {
 	if n == nil {
-		return errors.New("we can not delete a nil node")
+		return ErrKeynotfound
 	}
 	switch {
 	case bytes.Compare(key, n.Key) == -1:
@@ -116,30 +112,13 @@ func (n *Node) Del(key []byte, parent *Node) error {
 		return n.Right.Del(key, n)
 	default:
 		if !n.marker {
-			return errors.New("the key is already deleted")
+			return ErrDeleted
 		}
 		n.marker = false
 		return nil
-		// // for a leaf
-		// if n.Left == nil && n.Right == nil {
-		// 	n.replaceNode(parent, nil)
-		// 	return nil
-		// }
-		// // for a node with one child
-		// if n.Left == nil {
-		// 	n.replaceNode(parent, n.Right)
-		// 	return nil
-		// }
-		// if n.Right == nil {
-		// 	n.replaceNode(parent, n.Left)
-		// 	return nil
-		// }
-		// replNode, replParent := n.Left.findMax(n)
-		// n.Key = replNode.Key
-		// n.Value = replNode.Value
-		// return replNode.Del(replNode.Key, replParent)
 	}
 }
+ 
 
 func (t *Tree) Set(value, data []byte) error {
 	if t.Root == nil {
@@ -149,10 +128,9 @@ func (t *Tree) Set(value, data []byte) error {
 	return t.Root.Set(value, data)
 }
 
-// To get a key in tree we search if it the root otherwise we call the node.get implemented earlier
-func (t *Tree) Get(key []byte) ([]byte, bool) {
+func (t *Tree) Get(key []byte) ([]byte, error) {
 	if t.Root == nil {
-		return nil, false
+		return nil, ErrKeynotfound
 	}
 	return t.Root.Get(key)
 }
@@ -175,6 +153,7 @@ func (t *Tree) Del(key []byte) error {
 	return nil
 }
 
+// The Ascend function is used to traverse the binary search tree in ascending order. 
 func (t *Tree) Ascend(visit func(key []byte, value []byte) bool) {
 	ascendInOrder(t.Root, visit)
 }
@@ -198,22 +177,45 @@ func ascendInOrder(node *Node, visit func(key []byte, value []byte) bool) bool {
 
 	return true
 }
-
-func Print(tree *Tree){
-	if (tree.Root == nil){
-		fmt.Println("empty tree")
+// The Reinitialize function is used to reset the binary search tree to an empty state.
+func (tree *Tree)Reinitialize() error{
+	if tree.Root == nil{
+		return errors.New("the tree is already empty")
 	}
-	printTree(tree.Root)
+	tree.Root = nil
+	return nil
 }
-func printTree (node *Node){
-	if node == nil{
-		return
+// The SetDeletedKey function is used to insert a new node into a binary search tree with a marker
+// set to false.  
+func (tree *Tree) SetDeletedKey(key , value[]byte) error{
+	if tree.Root == nil{
+		tree.Root = &Node{Key: key, Value: value, marker: false}
+		return nil
 	}
-	printTree(node.Left)
-	mar:= "true"
-	if !node.marker{
-		mar ="false"
+	return tree.Root.SetDeletedKey(key, value)
+}
+func (n *Node) SetDeletedKey(key , value[]byte) error{
+	if n == nil{
+		return errors.New("cannot insert a value into a nil tree")
 	}
-	fmt.Println("key: ",string(node.Key)," value: ",string(node.Value), "marker",mar )
-	printTree(node.Right)
+	switch {
+	case bytes.Equal(key, n.Key):
+		n.Value = value
+		n.marker = false
+		return nil
+	case bytes.Compare(key, n.Key) == -1:
+		if n.Left == nil {
+			n.Left = &Node{Key: key, Value: value, marker: false, Parent: n}
+			return nil
+		}
+		return n.Left.SetDeletedKey(key, value)
+	case bytes.Compare(key, n.Key) == 1:
+		if n.Right == nil {
+			n.Right = &Node{Key: key, Value: value, marker: false, Parent: n}
+			return nil
+		}
+		return n.Right.SetDeletedKey(key, value)
+	default:
+		return nil
+	}
 }

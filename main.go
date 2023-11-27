@@ -4,21 +4,23 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	// "time"
 )
 
 const (
 	watermarkSize = 9 // Change this to the size of your watermark in bytes
 )
-//Todo make the count to flush to disk 100 and remove all the unnecessary fmt.println 
+
+// Todo make the count to flush to disk 100 and remove all the unnecessary fmt.println
 func main() {
-	
+
 	f, err := os.OpenFile("wal.log", os.O_CREATE|os.O_APPEND, 0755)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer f.Close()
-	wal := NewWal(f,"wal.log")
+	wal := NewWal(f, "wal.log")
 	// wal.checksum, err = wal.CalculateCheckSum()
 	if err != nil {
 		fmt.Println(err)
@@ -34,16 +36,23 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	err = sst.Flush(&tree)
-	if err != nil{
-		fmt.Println(err)
-	}
-	err = sst.Compact()
-	if err != nil{
-		fmt.Println(err)
-	}
 	fmt.Println(sst.numOfSStable)
-	
+	// fmt.Println(sst.sstables[0].name)
+
+	// for i := 0; i < 6; i++ {
+	// err = sst.Flush(&tree)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+		
+	// 	time.Sleep(1 * time.Second)
+	// }
+	// time.Sleep(1 * time.Second)
+	// err = sst.Compact()
+	// if err != nil{
+	// 	fmt.Println(err)
+	// }
+	// fmt.Println(sst.numOfSStable)
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		GetHandler(w, r, &tree, sst)
 	})
@@ -59,6 +68,3 @@ func main() {
 	http.ListenAndServe(":8084", nil)
 
 }
-
-
-
