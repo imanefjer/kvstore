@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"hash/crc32"
 	"io"
@@ -27,8 +26,6 @@ const (
 )
 
 var (
-
-	
 	// ErrClosed is returned when an operation cannot be completed because
 	// the wal is closed.
 	ErrClosed = errors.New("wal closed")
@@ -45,24 +42,7 @@ func (w *Wal) begin() error {
 	_, err := w.file.Seek(0, io.SeekStart)
 	return err
 }
-//encodes the int as slice of bytes 
-func encodeInt(x int)[]byte{
-	var encoded [4]byte
-	binary.BigEndian.PutUint32(encoded[:], uint32(x))
-	return encoded[:]
-}
-//decodes the slice of bytes as an int
-func decodeInt(encoded []byte) int {
-	return int(binary.BigEndian.Uint32(encoded))
-}
-func encodeVersion(v int)[]byte {
-	var encoded [2]byte
-	binary.BigEndian.PutUint16(encoded[:], uint16(v))
-	return encoded[:]
-}
-func decodeVersion(encoded []byte) int {
-	return int(binary.BigEndian.Uint16(encoded))
-}
+
 //appendCommand write to the wal the command that has been executed it first 
 //stores the command (0 if Set and 1 if Del ) then the length of the key then the key
 //then the length of the value 
@@ -95,17 +75,17 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	value := []byte(e.Value)
 	var command []byte
 	if e.Command == Set {
-		command = encodeInt(0)
+		command = encodeNum(0)
 	} else {
-		command = encodeInt(1)
+		command = encodeNum(1)
 	}
-	len:= keyLen + valueLen + 12
+	len:= keyLen + valueLen + 10
 	entry := make([]byte, len)
-	copy(entry[0:4], command)
-	copy(entry[4:8], keyLenn)
-	copy(entry[8:keyLen+8], key)
-	copy(entry[keyLen+8:keyLen+12], valueLenn)
-	copy(entry[keyLen+12:keyLen+valueLen+12], value)	
+	copy(entry[0:2], command)
+	copy(entry[2:6], keyLenn)
+	copy(entry[6:keyLen+6], key)
+	copy(entry[keyLen+6:keyLen+10], valueLenn)
+	copy(entry[keyLen+10:keyLen+valueLen+10], value)	
 	if _, err := w.file.Write(entry); err != nil {
 		return err
 	}
@@ -166,13 +146,13 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 	for {
 		// Read command
-		var encodedCommandByte [4]byte
+		var encodedCommandByte [2]byte
 		if _, err:= w.file.Read(encodedCommandByte[:]); err == io.EOF{
 			break
 		}else if err != nil{
 			return nil, err
 		}
-		commandByte := decodeInt(encodedCommandByte[:])
+		commandByte := decodeNum(encodedCommandByte[:])
 		command := Cmd(commandByte)
 		// Read key length
 		var encodedKeyLen [4]byte

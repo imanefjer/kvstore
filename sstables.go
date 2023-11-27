@@ -21,9 +21,6 @@ var (
 	ErrCorrupt = errors.New("corrupt sstable")
 	maxFiles   = 4
 )
-//TODO when the marker is 0 (del we write just the keylen and key)
-//TODO checksum
-// TODO make sure that writing is good and then implements the searching and check if wz should store the largest key or the length ot the largest key same for smallest
 type SStable struct {
 	file        io.ReadWriteSeeker
 	magicNumber [4]byte
@@ -190,7 +187,7 @@ func openSStable(path string) (*SStable, error) {
 	if _, err := file.Read(versionEncoded[:]); err != nil {
 		return nil, err
 	}
-	version := decodeVersion(versionEncoded[:])
+	version := decodeNum(versionEncoded[:])
 
 	_, err = file.Seek(0, io.SeekStart)
 	if err != nil {
@@ -230,12 +227,11 @@ func openSStable(path string) (*SStable, error) {
 // to search in the sstables from the newest to the oldest in time for a specific key
 //the way the entries /nodes ot the tree will be written in the sstfile
 func (node *Node) format() []byte {
-	//todo marker size
 	var marker []byte
 	if node.marker {
-		marker = encodeInt(1)
+		marker = encodeNum(1)
 	} else {
-		marker = encodeInt(0)
+		marker = encodeNum(0)
 	}
 	len1 := len(node.Key)
 	len2 := len(node.Value)
@@ -243,12 +239,12 @@ func (node *Node) format() []byte {
 	valueLen := encodeInt(len2)
 	key := node.Key
 	value := node.Value
-	res := make([]byte, len1+len2+12)
-	copy(res[0:4], marker)
-	copy(res[4:8], keyLen)
-	copy(res[8:len1+8], key)
-	copy(res[len1+8:len1+12], valueLen)
-	copy(res[len1+12:len1+len2+12], value)
+	res := make([]byte, len1+len2+10)
+	copy(res[0:2], marker)
+	copy(res[2:6], keyLen)
+	copy(res[6:len1+6], key)
+	copy(res[len1+6:len1+10], valueLen)
+	copy(res[len1+10:len1+len2+10], value)
 	return res
 }
 
@@ -293,7 +289,7 @@ func (s *SStables) Flush(tree *Tree) error {
 	}
 
 	//write the version
-	version := encodeVersion(1)
+	version := encodeNum(1)
 	if _, err := file.Write(version); err != nil {
 		return err
 	}
@@ -329,9 +325,26 @@ func (s *SStables) Flush(tree *Tree) error {
 		return err
 	}
 	s.numOfSStable++
+	//add the new sstable to the sstables
+	var magicNumber1 [4]byte
+	copy(magicNumber[:], encodeInt(1234))
+
+	s.sstables = append(s.sstables, &SStable{
+		magicNumber: magicNumber1,
+		smallestKey: tree.Min(),
+		largestKey:  tree.Max(),
+		entryCount:  tree.Len(),
+		version:     1,
+		checksum:    int(checksum),
+		file:        file,
+		name:        path,
+	})
 	// If the count of sstfiles reaches the maximum allowable number of files (maxFiles)
 	// we initiate the  compaction process
 	if (s.numOfSStable == maxFiles){
+		fmt.Println("hana")
+		time.Sleep(1 * time.Second)
+
 		err = s.Compact()
 		if err != nil {
 			return err
@@ -351,9 +364,6 @@ func (s *SStables) Name() string{
 }
 
 func (s *SStables) Search(key []byte) ([]byte, error) {
-	// Acquire a read lock.
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	// When searching for a key in the SSTables, we begin with the newest file and so on
 	for i := len(s.sstables) - 1; i >= 0; i-- {
 		if bytes.Compare(key, s.sstables[i].smallestKey[:]) >= 0 && bytes.Compare(key, s.sstables[i].largestKey[:]) <= 0 {
@@ -382,9 +392,22 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-
-	//TODO  checksum
-
+	var content bytes.Buffer
+	fileInfo, err := f.Stat()
+	// We read the file up to its size minus four, as the checksum within the file
+	// was calculated only for the content that precedes its writing.
+	file := io.LimitReader(f, fileInfo.Size()-4)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(&content, file)
+	if err != nil {
+		return nil, err
+	}
+	checksum := crc32.ChecksumIEEE(content.Bytes())
+	if (checksum != uint32(s.checksum)){
+		return nil, ErrCorrupt
+	}
 	// go to the block where the keys and values are stored
 	offset := 4 + 4 + 4 + 4 + 2 + len(s.largestKey) + len(s.smallestKey)
 	_, err = f.Seek(int64(offset), io.SeekStart)
@@ -394,7 +417,7 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 	//check if the key is in the file
 	entryCount := s.entryCount
 	for i := 0; i < entryCount; i++ {
-		var marker [4]byte
+		var marker [2]byte
 		_, err := f.Read(marker[:])
 		if err != nil {
 			return nil, err
@@ -414,7 +437,7 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 			return nil, ErrKeynotfound
 		}
 		if bytes.Equal(key1, key) {
-			if decodeInt(marker[:]) == 1 {
+			if decodeNum(marker[:]) == 1 {
 				var valueLen [4]byte
 				if _, err := f.Read(valueLen[:]); err != nil {
 					return nil, err
@@ -445,20 +468,24 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 }
 
 func (s *SStables) Compact() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
 	var newSSts []*SStable
-	for i := 0; i < s.numOfSStable-2; i += 2 {
+	fmt.Println("9rbt")
+	fmt.Println(len(s.sstables))
+	for i := 0; i <= s.numOfSStable-2; i += 2 {
+		fmt.Println("9rbt")
+		fmt.Println(i)
 		NewSst, err := s.merge(s.sstables[i], s.sstables[i+1])
-		time.Sleep(1 * time.Second)
 		if err != nil {
 			return err
 		}
+		time.Sleep(1 * time.Second)
+		fmt.Println("daz")
 		newSSts = append(newSSts, NewSst)
 	}
 	s.numOfSStable = s.numOfSStable / 2
 	s.sstables = newSSts
-	fmt.Println(s.numOfSStable)
+
 	return nil
 }
 
@@ -468,7 +495,6 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	//the largest key will be the largest key of the two sstables
 	//the entry count will be the sum of the entry count of the two sstables
 	path := fmt.Sprintf(s.path + "/" + s.Name())
-	fmt.Println(path)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
 		return nil, err
@@ -484,6 +510,46 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 		return nil, err
 	}
 	defer f2.Close()
+	//check if the file was not corrupted
+
+	var content1 bytes.Buffer
+	fileInfo1, err := f1.Stat()
+	//check if the files were not corrupted
+	file1 := io.LimitReader(f1, fileInfo1.Size()-4)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(&content1, file1)
+	if err != nil {
+		return nil, err
+	}
+	checksum1 := crc32.ChecksumIEEE(content1.Bytes())
+	if (checksum1 != uint32(s1.checksum)){
+		return nil, ErrCorrupt
+	}
+	_, err = f1.Seek(0,io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	//checksum 
+	var content2 bytes.Buffer
+	fileInfo2, err := f2.Stat()
+	file2 := io.LimitReader(f2, fileInfo2.Size()-4)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(&content2, file2)
+	if err != nil {
+		return nil, err
+	}
+	checksum2 := crc32.ChecksumIEEE(content2.Bytes())
+	if (checksum2 != uint32(s2.checksum)){
+		return nil, ErrCorrupt
+	}
+	_, err = f2.Seek(0,io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
 	// read the magicnumber
 	var magicNumber [4]byte
 	if _, err := f1.Read(magicNumber[:]); err != nil {
@@ -578,12 +644,12 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	tree := Tree{}
 	//write the keyvalues in an ordred way as it already is in f1 and f2
 	for i := 0; i < entryCountInt1; i++ {
-		var marker [4]byte
+		var marker [2]byte
 		if _, err := f1.Read(marker[:]); err != nil {
 			return nil, err
 		}
 		//decode marker
-		markerInt := decodeInt(marker[:])
+		markerInt := decodeNum(marker[:])
 		//read the key length
 		var keyLen [4]byte
 		if _, err := f1.Read(keyLen[:]); err != nil {
@@ -616,12 +682,12 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	}
 
 	for i := 0; i < entryCountInt2; i++ {
-		var marker [4]byte
+		var marker [2]byte
 		if _, err := f2.Read(marker[:]); err != nil {
 			return nil, err
 		}
 		//decode marker
-		markerInt := decodeInt(marker[:])
+		markerInt := decodeNum(marker[:])
 		//read the key length
 		var keyLen [4]byte
 		if _, err := f2.Read(keyLen[:]); err != nil {

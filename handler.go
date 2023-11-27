@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	max = 10
+	max = 2
 )
 
+//TODO handle the unknown commands
 type KeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
@@ -32,7 +33,6 @@ func GetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, sst *SStable
 		return
 	}
 	if err == ErrKeynotfound {
-		fmt.Println("hey")
 		// search in sstfiles
 		value, err := sst.Search(key1)
 		if err == ErrDeleted || err == ErrKeynotfound {
@@ -95,6 +95,8 @@ func SetHandler(w http.ResponseWriter, r *http.Request, tree *Tree, wal *Wal, ss
 
 	//if the tree has reached the maximum length it needs to be flushed to disk
 	if tree.Len() == max {
+		fmt.Println("wa hana hna")
+
 		if err := FlushToDisk(tree, wal, sst); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -182,4 +184,8 @@ func FlushToDisk(tree *Tree, wal *Wal, sst *SStables) error {
 		return err
 	}
 	return nil
+}
+//Default handler 
+func DefaultHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Unknown command: %s\n", r.URL.Path)
 }

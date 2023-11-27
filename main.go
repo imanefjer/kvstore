@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	// "time"
 )
 
 const (
@@ -29,14 +28,12 @@ func main() {
 	//In case the program exits and some elements in the tree were not flushed to disk
 	err = Recover(wal, &tree)
 	if err != nil {
-		fmt.Println("tes")
 		fmt.Println(err)
 	}
 	sst, err := NewSST("sstFiles")
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(sst.numOfSStable)
 	// fmt.Println(sst.sstables[0].name)
 
 	// for i := 0; i < 6; i++ {
@@ -52,10 +49,14 @@ func main() {
 	// if err != nil{
 	// 	fmt.Println(err)
 	// }
-	// fmt.Println(sst.numOfSStable)
+	fmt.Println(sst.numOfSStable)
+	
+
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		GetHandler(w, r, &tree, sst)
 	})
+
+	
 
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		SetHandler(w, r, &tree, wal, sst)
@@ -63,6 +64,10 @@ func main() {
 
 	http.HandleFunc("/del", func(w http.ResponseWriter, r *http.Request) {
 		DelHandler(w, r, &tree, wal, sst)
+	})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		DefaultHandler(w, r)
 	})
 
 	http.ListenAndServe(":8084", nil)

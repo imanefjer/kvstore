@@ -137,7 +137,7 @@ func (t *Tree) Get(key []byte) ([]byte, error) {
 func (t *Tree) Del(key []byte) error {
 	//deleting an empty tree
 	if t.Root == nil {
-		return errors.New("the tree is already empty")
+		return ErrKeynotfound
 	}
 	// we add parent to deal with the case of deleting the root also
 	parent := &Node{Right: t.Root}
