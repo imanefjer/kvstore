@@ -6,12 +6,8 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	"sync"
 	"strings"
 )
-
-// TODO  make it binary
-// TODO
 type Entry struct {
 	Key     []byte
 	Value   []byte
@@ -34,7 +30,6 @@ var (
 type Wal struct {
 	file      io.ReadWriteSeeker
 	name 		string
-	mu        sync.Mutex //
 
 }
 
@@ -50,9 +45,6 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	if w == nil {
 		return ErrClosed
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	//TODO try to make this a function to not repeat the same thing 
 	if e == nil {
 		return errors.New("nil entry")
 	}
@@ -123,8 +115,6 @@ func (w *Wal) Read() ([]*Entry, error) {
 	if w == nil {
 		return nil, ErrClosed
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()	
 	var entries []*Entry
 	err := w.begin()
 	if err != nil {
@@ -188,6 +178,9 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 	return entries, nil
 }
+//we search for the last WaterMark written in the wal 
+// A potential issue arises if someone uses "WATERMARK" as a value or key, as this could lead to an incorrect position detection.
+
 func (w *Wal)findLastWatermarkPosition() (int64, error) {
 	var pos int64 = -1
 

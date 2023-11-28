@@ -8,10 +8,9 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	"sync"
 	"time"
 )
-
+//todo read in compact read the whole content 
 var (
 	//ErrKeynotfound is returned when the lod is corrupt
 	ErrKeynotfound = errors.New("key not found")
@@ -23,7 +22,6 @@ var (
 )
 //todo buffer in write 
 type SStable struct {
-	// file        io.ReadWriteSeeker
 	magicNumber [4]byte
 	smallestKey []byte
 	largestKey  []byte
@@ -35,7 +33,6 @@ type SStable struct {
 type SStables struct {
 	sstables     []*SStable
 	path         string //path to the sstable directory
-	mu           sync.RWMutex
 	numOfSStable int
 }
 
@@ -251,8 +248,6 @@ func (node *Node) format() []byte {
 
 // when we flush to disk we create a new sstable that contains the content of the tree
 func (s *SStables) Flush(tree *Tree) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	//create a new sstable
 	path := fmt.Sprintf(s.path + "/" + s.Name())
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0755)
@@ -274,7 +269,7 @@ func (s *SStables) Flush(tree *Tree) error {
 	if _, err := file.Write(minKey); err != nil {
 		return err
 	}
-	_, err = file.WriteString(string(tree.Min()))
+	_, err = file.Write(tree.Min())
 	if err != nil {
 		return err
 	}
@@ -284,7 +279,7 @@ func (s *SStables) Flush(tree *Tree) error {
 	if _, err := file.Write(maxKey); err != nil {
 		return err
 	}
-	_, err = file.WriteString(string(tree.Max()))
+	_, err = file.Write((tree.Max()))
 	if err != nil {
 		return err
 	}
