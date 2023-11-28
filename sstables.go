@@ -19,10 +19,11 @@ var (
 	ErrDeleted = errors.New("key deleted")
 	//ErrCorrupt is returned when the Sstable is corrupt
 	ErrCorrupt = errors.New("corrupt sstable")
-	maxFiles   = 4
+	maxFiles   = 10
 )
+//todo buffer in write 
 type SStable struct {
-	file        io.ReadWriteSeeker
+	// file        io.ReadWriteSeeker
 	magicNumber [4]byte
 	smallestKey []byte
 	largestKey  []byte
@@ -44,7 +45,7 @@ func NewSST(path string) (*SStables, error) {
 	// Open the directory
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		// Directory does not exist, create it
-		err := os.Mkdir(path, 0755) 
+		err := os.Mkdir(path, 0755)
 		if err != nil {
 			return nil, err
 		}
@@ -91,6 +92,7 @@ func NewSST(path string) (*SStables, error) {
 		}, nil
 	}
 }
+
 // Load all SSTables from a given directory
 func loadSStable(path string) ([]*SStable, error) {
 	var sstables []*SStable
@@ -108,10 +110,10 @@ func loadSStable(path string) ([]*SStable, error) {
 			continue
 		}
 		//we load the sstfiles by creating a new sstable if it has the correct info and in the correct format
-		// 
+		//
 		path1 := fmt.Sprintf(path + "/" + file.Name())
 		sstable, err := openSStable(path1)
-		if err == ErrCorrupt{
+		if err == ErrCorrupt {
 			continue
 		}
 		if err != nil {
@@ -193,7 +195,7 @@ func openSStable(path string) (*SStable, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	offset := fileInfo.Size() - 4
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -218,14 +220,13 @@ func openSStable(path string) (*SStable, error) {
 		entryCount:  decodeInt(entryCount[:]),
 		version:     version,
 		checksum:    checksumUint32,
-		file:        file,
 	}
 
 	return sstable, nil
 }
 
 // to search in the sstables from the newest to the oldest in time for a specific key
-//the way the entries /nodes ot the tree will be written in the sstfile
+// the way the entries /nodes ot the tree will be written in the sstfile
 func (node *Node) format() []byte {
 	var marker []byte
 	if node.marker {
@@ -336,15 +337,11 @@ func (s *SStables) Flush(tree *Tree) error {
 		entryCount:  tree.Len(),
 		version:     1,
 		checksum:    int(checksum),
-		file:        file,
 		name:        path,
 	})
 	// If the count of sstfiles reaches the maximum allowable number of files (maxFiles)
 	// we initiate the  compaction process
-	if (s.numOfSStable == maxFiles){
-		fmt.Println("hana")
-		time.Sleep(1 * time.Second)
-
+	if s.numOfSStable == maxFiles {
 		err = s.Compact()
 		if err != nil {
 			return err
@@ -353,13 +350,13 @@ func (s *SStables) Flush(tree *Tree) error {
 	return nil
 }
 
-//To name of the files
-func (s *SStables) Name() string{
+// To name of the files
+func (s *SStables) Name() string {
 	if s == nil {
 		return "Invalid SStables (nil)"
 	}
-	currentTime := time.Now()        
-	path :=  fmt.Sprintf("file%s.sst", currentTime.Format("2006_01_02_15_04_05"))
+	filename  := time.Now().UnixNano()
+	path := fmt.Sprintf("file%v.sst",filename)
 	return path
 }
 
@@ -405,7 +402,7 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 		return nil, err
 	}
 	checksum := crc32.ChecksumIEEE(content.Bytes())
-	if (checksum != uint32(s.checksum)){
+	if checksum != uint32(s.checksum) {
 		return nil, ErrCorrupt
 	}
 	// go to the block where the keys and values are stored
@@ -470,17 +467,12 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 func (s *SStables) Compact() error {
 
 	var newSSts []*SStable
-	fmt.Println("9rbt")
 	fmt.Println(len(s.sstables))
 	for i := 0; i <= s.numOfSStable-2; i += 2 {
-		fmt.Println("9rbt")
-		fmt.Println(i)
 		NewSst, err := s.merge(s.sstables[i], s.sstables[i+1])
 		if err != nil {
 			return err
 		}
-		time.Sleep(1 * time.Second)
-		fmt.Println("daz")
 		newSSts = append(newSSts, NewSst)
 	}
 	s.numOfSStable = s.numOfSStable / 2
@@ -524,14 +516,14 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 		return nil, err
 	}
 	checksum1 := crc32.ChecksumIEEE(content1.Bytes())
-	if (checksum1 != uint32(s1.checksum)){
+	if checksum1 != uint32(s1.checksum) {
 		return nil, ErrCorrupt
 	}
-	_, err = f1.Seek(0,io.SeekStart)
+	_, err = f1.Seek(0, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
-	//checksum 
+	//checksum
 	var content2 bytes.Buffer
 	fileInfo2, err := f2.Stat()
 	file2 := io.LimitReader(f2, fileInfo2.Size()-4)
@@ -543,10 +535,10 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 		return nil, err
 	}
 	checksum2 := crc32.ChecksumIEEE(content2.Bytes())
-	if (checksum2 != uint32(s2.checksum)){
+	if checksum2 != uint32(s2.checksum) {
 		return nil, ErrCorrupt
 	}
-	_, err = f2.Seek(0,io.SeekStart)
+	_, err = f2.Seek(0, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -593,6 +585,7 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	if _, err := f2.Read(smallestKey2[:]); err != nil {
 		return nil, err
 	}
+
 	smallestKeyLen2 := decodeInt(smallestKey2[:])
 	smallestKey2Bytes := make([]byte, smallestKeyLen2)
 	if _, err := f2.Read(smallestKey2Bytes); err != nil {
@@ -604,7 +597,7 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	} else {
 		smallestKey = smallestKey2Bytes
 	}
-	
+
 	//the largest key
 	var largestKey1 [4]byte
 	if _, err := f1.Read(largestKey1[:]); err != nil {
@@ -630,13 +623,13 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	} else {
 		largestKey = largestKey2Bytes
 	}
-	
+
 	//the version
 	var version [2]byte
 	if _, err := f1.Read(version[:]); err != nil {
 		return nil, err
 	}
-	
+
 	_, err = f2.Seek(2, io.SeekCurrent)
 	if err != nil {
 		return nil, err
@@ -782,7 +775,6 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 		entryCount:  entryCountInt1 + entryCountInt2,
 		version:     s1.version,
 		checksum:    int(checksum),
-		file:        file,
 		name:        path,
 	}
 	//close f1 and f2

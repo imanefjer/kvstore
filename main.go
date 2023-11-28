@@ -10,6 +10,7 @@ const (
 	watermarkSize = 9 // Change this to the size of your watermark in bytes
 )
 
+//todo readme testing code
 // Todo make the count to flush to disk 100 and remove all the unnecessary fmt.println
 func main() {
 

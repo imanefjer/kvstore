@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	max = 2
+	max = 10
 )
 
 //TODO handle the unknown commands
