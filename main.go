@@ -13,7 +13,7 @@ const (
 // todo readme testing code
 // Todo make the count to flush to disk 100 and remove all the unnecessary fmt.println
 func main() {
-
+	//creating or opening the wal
 	f, err := os.OpenFile("wal.log", os.O_CREATE|os.O_APPEND, 0755)
 	if err != nil {
 		fmt.Println(err)
@@ -21,7 +21,7 @@ func main() {
 	}
 	defer f.Close()
 	wal := NewWal(f, "wal.log")
-	//In case the program exits and some elements in the tree were not flushed to disk
+	//creating a new db
 	db, err := NewDB(wal)
 	if err != nil {
 		fmt.Println(err)

@@ -9,11 +9,17 @@ import (
 var (
 	max = 100
 )
+
 type KeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
-
+// To handle the 'get' operation, the process begins by checking if the key is not empty.
+// Subsequently, the database's tree is queried to determine if the key exists.
+// If the key is found in the tree, the operation concludes, and the corresponding value is returned.
+// If the key is not present in the tree, a search in the SSTables is initiated using the sst.search() function.
+// If the key is found in the SSTables, the operation concludes, and the corresponding value is returned.
+// If the key is not found in the SSTables, the operation concludes, and an error(key not found) is returned.
 func GetHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	key := r.URL.Query().Get("key")
 
@@ -45,12 +51,14 @@ func GetHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 		}
 		fmt.Println("Gets key:  ", string(value))
 		//print in the page
-		fmt.Fprintf( w, "key: %s, value: %s \n",string(key), string(value))
+		fmt.Fprintf(w, "key: %s, value: %s \n", string(key), string(value))
 		return
 	}
 	fmt.Println("Gets key: ", string(value))
 }
-
+// To handle the 'set' operation, the process initiates by extracting the key and value from the JSON format and check if 
+//they are not empty. If they are not empty we set the value in the tree and add the command to the wal.
+//If the tree has reached the maximum length it needs to be flushed to disk
 func SetHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -91,16 +99,21 @@ func SetHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 		return
 	}
 	fmt.Println("Sets key: ", string(key), " value = ", string(value))
-	fmt.Fprintf( w, "Sets key: %s, value: %s \n",string(key), string(value))
+	fmt.Fprintf(w, "Sets key: %s, value: %s \n", string(key), string(value))
 
 	//if the tree has reached the maximum length it needs to be flushed to disk
 	if db.tree.Len() == max {
-		if err := FlushToDisk(db.tree, db.wal, db.sst); err != nil {
+		if err := FlushToDisk(db); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
 }
+// To handle the 'del' operation, we first check if the given key is not null. 
+// If the key is found in the tree, the corresponding node is marked as deleted by changing its marker to 0.
+// If the key is not present in the tree, we search for it in the SSTables. If found, 
+// a deleted node (marked with 0) is created in the tree, and the deletion command is added to the WAL.
+// Additionally, if the tree has reached its maximum length, it needs to be flushed to disk to maintain efficiency.
 func DelHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	key := r.URL.Query().Get("key")
 
@@ -155,11 +168,11 @@ func DelHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 		return
 	}
 	fmt.Println("the deleted key: ", string(key))
-	fmt.Fprintln(w,"the deleted key:%s ", string(key))
+	fmt.Fprintf(w, "the deleted key: %s ", string(key))
 	//if the tree has reached the maximum length it needs to be flushed to disk
 
 	if db.tree.Len() == max {
-		if err := FlushToDisk(db.tree, db.wal, db.sst); err != nil {
+		if err := FlushToDisk(db); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -169,16 +182,16 @@ func DelHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 
 // The FlushToDisk function flushes the tree to disk, reinitializes the tree, and add
 // the watermark in the wal
-func FlushToDisk(tree *Tree, wal *Wal, sst *SStables) error {
-	err := sst.Flush(tree)
+func FlushToDisk(db *DB) error {
+	err := db.sst.Flush(db.tree)
 	if err != nil {
 		return err
 	}
-	err = tree.Reinitialize()
+	err = db.tree.Reinitialize()
 	if err != nil {
 		return err
 	}
-	err = wal.WaterMark()
+	err = db.wal.WaterMark()
 	if err != nil {
 		return err
 	}

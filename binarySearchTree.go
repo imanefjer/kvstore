@@ -17,21 +17,25 @@ type Node struct {
 type Tree struct {
 	Root *Node
 }
-
+//set a value in the BST by looking for the right place to put the key if id not already in the
+//tree 
 func (n *Node) Set(key, value []byte) error {
 	if n == nil {
 		return errors.New("cannot insert a value into a nil tree")
 	}
 	switch {
-	case bytes.Equal(key, n.Key):
+	//if the keys are equal we update the value
+	case bytes.Equal(key, n.Key): 
 		n.Value = value
 		return nil
+	//if the key is less than the current node key we search in the left subtree
 	case bytes.Compare(key, n.Key) == -1:
 		if n.Left == nil {
 			n.Left = &Node{Key: key, Value: value, marker: true, Parent: n}
 			return nil
 		}
 		return n.Left.Set(key, value)
+	//if the key is greater than the current node key we search in the right subtree
 	case bytes.Compare(key, n.Key) == 1:
 		if n.Right == nil {
 			n.Right = &Node{Key: key, Value: value, marker: true, Parent: n}
@@ -42,7 +46,8 @@ func (n *Node) Set(key, value []byte) error {
 		return nil
 	}
 }
-
+//we get the value of a given a key by looking and comparing the key with the current node key 
+//and checking if the maker is 1 (the value is not deleted)
 func (n *Node) Get(key []byte) ([]byte, error) {
 	if n == nil {
 		return nil, ErrKeynotfound
@@ -100,7 +105,8 @@ func (n *Node)len()int{
 	}
 	return 1+n.Left.len()+n.Right.len()
 }
-
+//to delete a key if a tree we check if it exists and if it does and the maker is 1 
+// we change the marker to 0
 func (n *Node) Del(key []byte, parent *Node) error {
 	if n == nil {
 		return ErrKeynotfound

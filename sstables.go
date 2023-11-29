@@ -20,7 +20,6 @@ var (
 	ErrCorrupt = errors.New("corrupt sstable")
 	maxFiles   = 10
 )
-//todo buffer in write 
 type SStable struct {
 	magicNumber [4]byte
 	smallestKey []byte
@@ -106,10 +105,9 @@ func loadSStable(path string) ([]*SStable, error) {
 		if file.IsDir() {
 			continue
 		}
-		//we load the sstfiles by creating a new sstable if it has the correct info and in the correct format
-		//
 		path1 := fmt.Sprintf(path + "/" + file.Name())
 		sstable, err := openSStable(path1)
+		// In the case of a corrupted file, it is ignored, and the system continues processing with the intact files.
 		if err == ErrCorrupt {
 			continue
 		}
@@ -121,7 +119,11 @@ func loadSStable(path string) ([]*SStable, error) {
 	}
 	return sstables, nil
 }
-
+// Given a file path, the function attempts to read the content of the file.
+// Initially, it extracts the checksum from the file and compares it with the checksum
+// written in the file. If the checksums differ, indicating file corruption, an error is returned.
+// If the checksums match, the function proceeds to extract additional information from the file,
+// such as the magic number, entry count...
 func openSStable(path string) (*SStable, error) {
 	var content bytes.Buffer
 	file, err := os.Open(path)
@@ -221,9 +223,13 @@ func openSStable(path string) (*SStable, error) {
 
 	return sstable, nil
 }
-
-// to search in the sstables from the newest to the oldest in time for a specific key
-// the way the entries /nodes ot the tree will be written in the sstfile
+// The format function is used to format the nodes of the tree in a way that they can be written to disk.
+// The format of a node is as follows:
+// 1. A marker that indicates whether the node is a deleted node or not. If the node is deleted, the marker is set to 1, otherwise 0.
+// 2. The length of the key.
+// 3. The key.
+// 4. The length of the value.
+// 5. The value.
 func (node *Node) format() []byte {
 	var marker []byte
 	if node.marker {
@@ -246,7 +252,13 @@ func (node *Node) format() []byte {
 	return res
 }
 
-// when we flush to disk we create a new sstable that contains the content of the tree
+// When flushing to disk, a new SSTable is created to store the content of the tree.
+// The content is written in a specific order, including the magic number, entry count,
+// smallest key, largest key, version, and key-value pairs, maintaining the order from the tree.
+// then the checksum of the file is calculated and appended to the end of the file.
+// The new SSTable is then added to the list of SSTables.
+// If the count of SSTables reaches the maximum allowable number of files (maxFiles),
+// the compaction process is triggered.
 func (s *SStables) Flush(tree *Tree) error {
 	//create a new sstable
 	path := fmt.Sprintf(s.path + "/" + s.Name())
@@ -300,6 +312,7 @@ func (s *SStables) Flush(tree *Tree) error {
 			return fmt.Errorf("failed to write to disk table %d: %w", s.numOfSStable, err)
 		}
 	}
+	//calculating the checksum
 	_, err = file.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
@@ -345,7 +358,7 @@ func (s *SStables) Flush(tree *Tree) error {
 	return nil
 }
 
-// To name of the files
+// this function generates a filename for an SSTable based on the current timestamp (UnixNano).
 func (s *SStables) Name() string {
 	if s == nil {
 		return "Invalid SStables (nil)"
@@ -354,10 +367,14 @@ func (s *SStables) Name() string {
 	path := fmt.Sprintf("file%v.sst",filename)
 	return path
 }
-
+// When searching for a key in the SSTables, the process begins by examining the newest file.
+// It checks if the key is present. If found, we check the marker if the marker is 0 
+// (indicating the key is deleted), an error is returned.
+// If the key is not found in the current file, the search continues in the next file.
 func (s *SStables) Search(key []byte) ([]byte, error) {
 	// When searching for a key in the SSTables, we begin with the newest file and so on
 	for i := len(s.sstables) - 1; i >= 0; i-- {
+		// if the key is between the smallestkey and largestkey of the sstfile we search on this file if not we move to the next file
 		if bytes.Compare(key, s.sstables[i].smallestKey[:]) >= 0 && bytes.Compare(key, s.sstables[i].largestKey[:]) <= 0 {
 			value, err := s.sstables[i].search(key)
 			// If the key is marked as deleted, an error is returned.
@@ -377,7 +394,9 @@ func (s *SStables) Search(key []byte) ([]byte, error) {
 
 	return nil, ErrKeynotfound
 }
-
+// The search process in the SSTable begins by verifying that the file is not corrupt.
+// then it checks if the key is present in the file. If found, the corresponding value is returned.
+// If the key is not in the file, the function returns an ErrKeyNotFound.
 func (s *SStable) search(key []byte) ([]byte, error) {
 	f, err := os.OpenFile(s.name, os.O_RDONLY, 0644)
 	if err != nil {
@@ -458,12 +477,16 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 	}
 	return nil, ErrKeynotfound
 }
-
+// Compact performs a compaction process on SSTables, merging pairs of SSTables into new ones.
+// It ensures that the newest SST files are compacted with each other,
+// and the oldest with the oldest, following a level-based compaction strategy.
 func (s *SStables) Compact() error {
 
 	var newSSts []*SStable
 	fmt.Println(len(s.sstables))
 	for i := 0; i <= s.numOfSStable-2; i += 2 {
+		// We ensure that the newest SST files are compacted with each other, 
+		// and the oldest with the oldest, following a level-based compaction strategy.
 		NewSst, err := s.merge(s.sstables[i], s.sstables[i+1])
 		if err != nil {
 			return err
@@ -475,7 +498,9 @@ func (s *SStables) Compact() error {
 
 	return nil
 }
-
+// merge merges two files by extracting the key-value pairs from each file,
+// placing them in a tree for sorting. The sorted pairs are then rewritten in an ordered manner,
+// along with additional information such as entry count and version...
 func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 	//the new sstable will have the same magicnumber and version
 	//the smallest key will be the smallest key of the two sstables

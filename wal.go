@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"errors"
-	"hash/crc32"
 	"io"
 	"os"
 	"strings"
 )
+
 type Entry struct {
 	Key     []byte
 	Value   []byte
@@ -28,9 +27,8 @@ var (
 )
 
 type Wal struct {
-	file      io.ReadWriteSeeker
-	name 		string
-
+	file io.ReadWriteSeeker
+	name string
 }
 
 func (w *Wal) begin() error {
@@ -38,9 +36,9 @@ func (w *Wal) begin() error {
 	return err
 }
 
-//appendCommand write to the wal the command that has been executed it first 
-//stores the command (0 if Set and 1 if Del ) then the length of the key then the key
-//then the length of the value 
+// appendCommand write to the wal the command that has been executed it first
+// stores the command (0 if Set and 1 if Del ) then the length of the key then the key
+// then the length of the value
 func (w *Wal) AppendCommand(e *Entry) error {
 	if w == nil {
 		return ErrClosed
@@ -48,7 +46,7 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	if e == nil {
 		return errors.New("nil entry")
 	}
-	if e.Command != Set && e.Command != Del{
+	if e.Command != Set && e.Command != Del {
 		return errors.New("invalid command")
 	}
 	if e.Key == nil {
@@ -58,7 +56,6 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	if e.Value == nil && e.Command == Set {
 		return errors.New("nil value")
 	}
-
 	keyLen := len(e.Key)
 	valueLen := len(e.Value)
 	keyLenn := encodeInt(keyLen)
@@ -71,32 +68,31 @@ func (w *Wal) AppendCommand(e *Entry) error {
 	} else {
 		command = encodeNum(1)
 	}
-	len:= keyLen + valueLen + 10
+	len := keyLen + valueLen + 10
 	entry := make([]byte, len)
 	copy(entry[0:2], command)
 	copy(entry[2:6], keyLenn)
 	copy(entry[6:keyLen+6], key)
 	copy(entry[keyLen+6:keyLen+10], valueLenn)
-	copy(entry[keyLen+10:keyLen+valueLen+10], value)	
+	copy(entry[keyLen+10:keyLen+valueLen+10], value)
 	if _, err := w.file.Write(entry); err != nil {
 		return err
 	}
 	return nil
 }
 
-// creating a ne wal
+// creating a new wal
 func NewWal(f io.ReadWriteSeeker, name string) *Wal {
 	return &Wal{
-		file:      f,
-		name: 	   name,
+		file: f,
+		name: name,
 	}
 }
-
 
 // After each flush to the disk, instead of creating a new WAL, we choose to delete the content of the WAL
 // using truncate, which reduces the size of the file, we should check if it's available for the WAL.
 func (w *Wal) WaterMark() error {
-	_, err := w.file.Seek(0 ,io.SeekEnd)
+	_, err := w.file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return err
 	}
@@ -130,41 +126,41 @@ func (w *Wal) Read() ([]*Entry, error) {
 		// Seek to the position after the last watermark
 		_, err = w.file.Seek(lastWatermarkPos+int64(watermarkSize), io.SeekStart)
 		if err != nil {
-			return nil , err
+			return nil, err
 		}
 	}
 
 	for {
 		// Read command
 		var encodedCommandByte [2]byte
-		if _, err:= w.file.Read(encodedCommandByte[:]); err == io.EOF{
+		if _, err := w.file.Read(encodedCommandByte[:]); err == io.EOF {
 			break
-		}else if err != nil{
+		} else if err != nil {
 			return nil, err
 		}
 		commandByte := decodeNum(encodedCommandByte[:])
 		command := Cmd(commandByte)
 		// Read key length
 		var encodedKeyLen [4]byte
-		if _, err:= w.file.Read(encodedKeyLen[:]); err != nil{
+		if _, err := w.file.Read(encodedKeyLen[:]); err != nil {
 			return nil, err
 		}
 		// fmt.Println("\n")
 		keyLen := decodeInt(encodedKeyLen[:])
 		// Read key
 		key := make([]byte, keyLen)
-		if _, err:= w.file.Read(key); err != nil{
+		if _, err := w.file.Read(key); err != nil {
 			return nil, err
 		}
 		// Read value length
 		var encodedValueLength [4]byte
-		if _, err:= w.file.Read(encodedValueLength[:]); err != nil{
+		if _, err := w.file.Read(encodedValueLength[:]); err != nil {
 			return nil, err
 		}
 		valueLen := decodeInt(encodedValueLength[:])
 		// Read value
 		value := make([]byte, valueLen)
-		if _, err:= w.file.Read(value); err != nil{
+		if _, err := w.file.Read(value); err != nil {
 			return nil, err
 		}
 		e := &Entry{
@@ -178,10 +174,11 @@ func (w *Wal) Read() ([]*Entry, error) {
 
 	return entries, nil
 }
-//we search for the last WaterMark written in the wal 
-// A potential issue arises if someone uses "WATERMARK" as a value or key, as this could lead to an incorrect position detection.
 
-func (w *Wal)findLastWatermarkPosition() (int64, error) {
+// we search for the last WaterMark written in the wal
+// A potential issue arises if someone uses "WATERMARK" as a value or key, as this could lead
+// to an incorrect position detection.
+func (w *Wal) findLastWatermarkPosition() (int64, error) {
 	var pos int64 = -1
 
 	buffer := make([]byte, watermarkSize)
@@ -212,24 +209,6 @@ func (w *Wal)findLastWatermarkPosition() (int64, error) {
 	}
 
 	return pos, nil
-}
-
-func (w *Wal) CalculateCheckSum() (uint32, error) {
-	err := w.begin()
-	if err != nil {
-		return 0, err
-	}
-	var content bytes.Buffer
-
-	_, err = io.Copy(&content, w.file)
-
-	if err != nil {
-		return 0, err
-	}
-
-	checksum := crc32.ChecksumIEEE(content.Bytes())
-	return checksum, nil
-
 }
 
 // In case of a crash, we use this function to redo the previous commands that were recorded
