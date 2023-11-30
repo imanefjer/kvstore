@@ -145,7 +145,6 @@ func (w *Wal) Read() ([]*Entry, error) {
 		if _, err := w.file.Read(encodedKeyLen[:]); err != nil {
 			return nil, err
 		}
-		// fmt.Println("\n")
 		keyLen := decodeInt(encodedKeyLen[:])
 		// Read key
 		key := make([]byte, keyLen)

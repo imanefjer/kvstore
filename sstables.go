@@ -155,7 +155,6 @@ func openSStable(path string) (*SStable, error) {
 		return nil, err
 	}
 	if decodeInt(magicNumber[:]) != 1234 {
-		fmt.Println(1)
 		return nil, ErrCorrupt
 	}
 	//read the entry count
@@ -208,7 +207,6 @@ func openSStable(path string) (*SStable, error) {
 	checksumUint32 := decodeInt(fileChecksum[:])
 
 	if checksum != uint32(checksumUint32) {
-		fmt.Println(2)
 		return nil, errors.New("corrupt sstable")
 	}
 
@@ -483,7 +481,6 @@ func (s *SStable) search(key []byte) ([]byte, error) {
 func (s *SStables) Compact() error {
 
 	var newSSts []*SStable
-	fmt.Println(len(s.sstables))
 	for i := 0; i <= s.numOfSStable-2; i += 2 {
 		// We ensure that the newest SST files are compacted with each other, 
 		// and the oldest with the oldest, following a level-based compaction strategy.
@@ -711,8 +708,6 @@ func (s *SStables) merge(s1 *SStable, s2 *SStable) (*SStable, error) {
 		//read the key
 		key := make([]byte, keyLenInt)
 		if _, err := f2.Read(key); err != nil {
-			fmt.Println("test")
-
 			return nil, err
 		}
 

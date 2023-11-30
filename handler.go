@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	max = 100
+	max = 500
 )
 
 type KeyValue struct {
@@ -49,11 +49,15 @@ func GetHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		
 		fmt.Println("Gets key:  ", string(value))
 		//print in the page
 		fmt.Fprintf(w, "key: %s, value: %s \n", string(key), string(value))
 		return
 	}
+	fmt.Println("Gets key:  ", string(value))
+		//print in the page
+		fmt.Fprintf(w, "key: %s, value: %s \n", string(key), string(value))
 	fmt.Println("Gets key: ", string(value))
 }
 // To handle the 'set' operation, the process initiates by extracting the key and value from the JSON format and check if 
